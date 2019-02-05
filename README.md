@@ -1,1 +1,4 @@
 # HouseRegression
+
+## Abstract
+In this project I will be using a dataset that describes houses in King County, Washington. I am attempting to predict the price of the house using various attributes of the house such as square footage, condition, and age. This is useful because it will be able to determine wether or not a house is listed at an appropriate price. I fitt numerous Linear and KNN Regression models to find the model that best predicts price. Using the Test RMSE I found that a linear interaction model did the best job in predicting the price of a house in King County. This gave me a good model to apply to my problem, being able to list and buy houses at fair prices, so that both parties are sure they are getting a good deal.
