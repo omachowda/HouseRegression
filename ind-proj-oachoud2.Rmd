@@ -1,0 +1,326 @@
+---
+title: 'Prediction of House Prices In King County, Washington Using Regression Models'
+author: "Omar Choudhry"
+date: 'oachoud2'
+abstract: 'In this project I will be using a dataset that describes houses in King County, Washington. I am attempting to predict the price of the house using various attributes of the house such as square footage, condition, and age. This is useful because it will be able to determine wether or not a house is listed at an appropriate price. I fit numerous Linear and KNN Regression models to find the model that best predicts price. Using the Test RMSE I found that a linear interaction model did the best job in predicting the price of a house in King County. This gave me a good model to apply to my problem, being able to list and buy houses at fair prices, so that both parties are sure they are getting a good deal.'
+output: 
+  html_document: 
+    theme: simplex
+---
+## Introduction
+
+The dataset I worked with for this project described house sales in King County, Washington. King County is a relatively large county in the state of Washington, and it contains Seattle, the state’s largest city. The purpose of my analysis is to predict the price of houses in this county based on attributes such as square footage, condition, year built, and zip code to name a few. If I am able to create a model that does a good job with predicting price I will be able to use this model to find a good price for listing a house on the market, as well as determine wether or not a house is a good deal for the price it is being offered at. The data I am using has 19 features and 21k observations. In other words, we have 21k houses in our dataset, each one having 19 attributes that describe it. I have provided a full description of these 19 attributes in a data dictionary in the Appendix section.
+
+Below is some exploratory analysis of my data set.
+
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+```{r library,echo = FALSE}
+library(caret)
+library(randomForest)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+```
+
+```{r functions,echo = FALSE}
+#Function Definitions
+
+calc_rmse = function(actual, predicted) {
+  sqrt(mean((actual - predicted) ^ 2))
+}
+
+get_best_result = function(caret_fit) {
+  best = which(rownames(caret_fit$results) == rownames(caret_fit$bestTune))
+  best_result = caret_fit$results[best, ]
+  rownames(best_result) = NULL
+  best_result
+}
+
+```
+
+
+```{r EDA, echo = FALSE}
+#Exploratory Analysis
+data = read.csv("https://daviddalpiaz.github.io/stat432sp18/projects/kc_house_data.csv")
+data = data[-1:-2]
+
+hist(data$price,xlim=c(0,6000000),breaks=50, main = "Price of Houses in King County",xlab= "Price ($)")
+hist(data$price,xlim=c(0,2000000),breaks=100, main = "Price of Houses in King County",xlab= "Price ($)")
+
+plot(data$sqft_living,data$price, main ="Square Footage Living Area vs. Price", xlab = "Square Footage of Living Area",ylab= "Price ($)")
+plot(data$sqft_above,data$price, main ="Square Footage Without Basement vs. Price", xlab = "Square Footage Without Basement",ylab= "Price ($)")
+
+```
+
+#### Explanation
+
+In the first histogram we see how skewed the distribution of prices is. We should be mindful of how expensive houses (outliers) will affect our analysis. In the 2nd histogram we see that most houses are between 300k-400k, which will help us gauge plausibility when making predictions. The 3rd and 4th plots show us that we may need to be aware of interaction between square footage variables. 
+
+## Methods
+
+In order to find the model that best predicts price based on the house attributes I trained both linear regression, and K-Nearest Neighbor Models. This involved many steps that I have broken down below. The goal of training multiple models of each type was to find the model with the lowest test Root Mean Squared Error. This model will do the best job at predicting the price of a house in King County based on the attributes we included.
+
+
+### Data
+  
+For purposed of my analysis I decided to drop both the ID and Date variables, as they do not directly relate to how much a house costs. There were a few other variables in question, so I did some testing when training models to see if I should alter or drop them. The variables in question included zip code, latitude, longitude, and square footage variables. Specifically, I wanted to check if zip code was better as a categorical variable, if latitude and longitude are significant at all, and if the square footage variables have any interaction that would skew the model.
+
+
+```{r data}
+#Reading Data
+data = read.csv("https://daviddalpiaz.github.io/stat432sp18/projects/kc_house_data.csv")
+#drop ID and Date Variables
+data = data[-1:-2]
+```
+
+```{r vartable,echo=FALSE}
+varquestion = data.frame(
+  var = c("Zipcode", "Lat/Long", 
+          "Square Footage"),
+  Issue = c("Not Categorical","May not be Significant","Possible Interactions"),
+  Test = c("Refactor and check RMSE","Check Significance via Summary","Check RMSE with Interactions"),
+  sol = c("Refactor in Dataset","Do Not Remove","Fit With Interaction")
+)
+
+colnames(varquestion) = c("Variable", "Issue", "Test", "Solution")
+
+kable_styling(kable(varquestion, format = "html", digits = 0), full_width = FALSE)
+```
+
+After finalizing the dataset I will be using to train the models, I split the data into a training set and a testing set. I used 80 percent of the data to train my models, and 20 percent to test them. 
+
+```{r split}
+#Test-Train Split
+set.seed(1)
+dataidx  = sample(nrow(data), size = trunc(0.80 * nrow(data)))
+trn = data[dataidx, ]
+tst = data[-dataidx, ]
+```
+
+### Models
+
+I built 21 models in total 5 of them being linear, and 16 being K nearest-neighbor regression models. I will provide a detailed list of these in the following 2 sections. For every model I will obtain the test RMSE and use that to evaluate the accuracy.
+
+#### Linear
+
+```{r lmod1}
+#Linear Models
+#solutions for zipcode
+lmod1 = lm(price ~ .,  data = trn)
+lmod2 = lm(price ~ .-zipcode + as.factor(zipcode),  data = trn)
+lmod3 = lm(price ~ .-zipcode,  data = trn)
+```
+
+```{r, include=FALSE}
+modlist1 = list(lmod1,lmod2,lmod3)
+trnpred1 = lapply(modlist1, predict, newdata = trn)
+tstpred1 = lapply(modlist1, predict, newdata = tst)
+
+# get RMSEs
+trnrmse1 = sapply(trnpred1, calc_rmse, actual = trn$price)
+tstrmse1 = sapply(tstpred1, calc_rmse, actual = tst$price)
+#summary(lmod1)
+```
+
+```{r reset ,results="hide",include=FALSE}
+#see that factoring zipcode is the best
+data$zipcode = as.factor(data$zipcode)
+set.seed(1)
+dataidx  = sample(nrow(data), size = trunc(0.80 * nrow(data)))
+trn = data[dataidx, ]
+tst = data[-dataidx, ]
+```
+
+```{r lmod2,results=FALSE}
+lmod4 = lm(price ~ . + (sqft_living*sqft_lot) + (sqft_living*sqft_above)+ (sqft_living*sqft_basement)+ (sqft_living*sqft_living15)+ (sqft_living*sqft_lot15)+ (sqft_lot15*sqft_lot) + (sqft_lot*sqft_above) + (sqft_lot*sqft_basement),  data = trn)
+null=lm(price~1, data=trn)
+lmod5 = step(null, scope = list(upper=lmod1), data=trn, direction="both")
+```
+
+Models Fitted Above:
+
+1. Full Additive Model
+2. Full Additive Model with Zipcode Factored
+3. Full Additive Model -Zipcode
+4. Square Foot Interaction Model
+5. Stepwise Model
+
+```{r, include=FALSE}
+modlist2 = list(lmod4,lmod5)
+trnpred2 = lapply(modlist2, predict, newdata = trn)
+tstpred2 = lapply(modlist2, predict, newdata = tst)
+
+# get RMSEs
+trnrsme2 = sapply(trnpred2, calc_rmse, actual = trn$price)
+tstrmse2 = sapply(tstpred2, calc_rmse, actual = tst$price)
+```
+
+
+
+```{r reset1, echo=FALSE}
+data = read.csv("https://daviddalpiaz.github.io/stat432sp18/projects/kc_house_data.csv")
+data = data[-1:-2]
+
+#Test-Train Split
+set.seed(1)
+dataidx  = sample(nrow(data), size = trunc(0.80 * nrow(data)))
+trn = data[dataidx, ]
+tst = data[-dataidx, ]
+```
+
+
+#### K-Nearest Neighbors
+
+```{r KNN}
+unscaledKNN = train(
+  price ~ .,
+  data = trn,
+  trControl = trainControl(method = "cv", number = 5),
+  method = "knn",
+  tuneGrid = expand.grid(k = c(1, 5, 10, 15, 20, 25, 30, 35))
+)
+
+scaledKNN = train(
+  price ~ .,
+  data = trn,
+  trControl = trainControl(method = "cv", number = 5),
+  preProcess = c("center", "scale"),
+  method = "knn",
+  tuneGrid = expand.grid(k = c(1, 5, 10, 15, 20, 25, 30, 35))
+)
+```
+
+For K-Nearest Neighbors I utilized 2 types of models:
+
+1. KNN with no pre-processing
+2. KNN where variables are centered and scaled (Mean=0 and Variance=1)
+
+For both methods I used 8 values for the k parameter (1, 5, 10, 15, 20, 25, 30, 35). This resulted in 16 KNN Models.
+
+
+## Results
+
+After determining the Test RMSE of the 21 models, and comparing them, we are able to narrow it down to a single best model for predicting house price from the included attributes. 
+
+```{r resulted,echo= FALSE}
+
+e1_results = data.frame(
+  mod = c("Full Additive Model", "Full Additive Model w Zipcode Factored", 
+          "Full Additive Model -Zipcode","Square Foot Interaction Model", "Stepwise Model"),
+  trn_rmse = append(trnrmse1,trnrsme2),
+  tst_rmse = append(tstrmse1,tstrmse2)
+)
+
+colnames(e1_results) = c("Model", "Train RMSE", "Test RMSE")
+kable_styling(kable(e1_results, format = "html", digits = 0), full_width = FALSE)
+```
+```{r ,echo=FALSE}
+plot(unscaledKNN, main = "Unscaled KNN")
+plot(scaledKNN, main = "Scaled KNN")
+
+reg_results = data.frame(
+  method = c( "Unscaled KNN", "Scaled KNN"),
+  cv = c(
+    get_best_result(unscaledKNN)$RMSE,
+    get_best_result(scaledKNN)$RMSE
+  ),
+  test = c(
+    calc_rmse(tst$price, predict(unscaledKNN, tst)),
+    calc_rmse(tst$price, predict(scaledKNN, tst))
+  )
+)
+colnames(reg_results) = c("Method", "CV RMSE", "Test RMSE")
+kable_styling(kable(reg_results, format = "html", digits = 0), full_width = FALSE)
+
+
+```
+
+By looking at the tables we see that the Square Foot Interaction Linear model has the lowest Test RMSE. This means it does the best job at predicting House Price from the 16 predictor attributes we leveraged.
+
+## Discussion
+
+Because we have determined that the Square Foot Interaction Linear Model is best for predicting house prices in King County, Washington, we can deduce a few things. 
+
+1. The Zipcode that the house is located in should be treated as a category, and not as a numeric value
+2. The square footage of the living space as well as the square footage of the lot and basement are very correlated, and accounting for their interactions makes our model much more accurate.
+
+Final Model:
+```{r}
+lmod4
+```
+
+Each of the coefficients listed above describes how much an attribute of a house should be multiplied by when making price predictions. For example the coefficient for sqft_lot is 0.6297. This means that the square footage of the lot of the given house we are making a prediction for will be multiplied by this value, and then added to the sum of the rest of the coefficients times their corresponding attributes. This summation of (coefficients * attributes) is what determines the price of the house. 
+
+From this model I could take a new house that was listed on the market in King County, gather the attributes that are apart of my model, plug them in, and return a predicted price for that house. If I were in the market to buy a house, this would be very helpful in deciding whether or not I am getting a good deal. If I am a realtor in the market, this model would be helpful in picking starting price for the house.
+
+
+## Appendix
+
+#### Additional Code
+
+```{r appendix, eval=FALSE}
+library(caret)
+library(randomForest)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+
+calc_rmse = function(actual, predicted) {
+  sqrt(mean((actual - predicted) ^ 2))
+}
+
+get_best_result = function(caret_fit) {
+  best = which(rownames(caret_fit$results) == rownames(caret_fit$bestTune))
+  best_result = caret_fit$results[best, ]
+  rownames(best_result) = NULL
+  best_result
+}
+
+modlist1 = list(lmod1,lmod2,lmod3)
+trnpred1 = lapply(modlist1, predict, newdata = trn)
+tstpred1 = lapply(modlist1, predict, newdata = tst)
+
+# get RMSEs
+trnrmse1 = sapply(trnpred1, calc_rmse, actual = trn$price)
+tstrmse1 = sapply(tstpred1, calc_rmse, actual = tst$price)
+
+modlist2 = list(lmod4,lmod5)
+trnpred2 = lapply(modlist2, predict, newdata = trn)
+tstpred2 = lapply(modlist2, predict, newdata = tst)
+
+# get RMSEs
+trnrsme2 = sapply(trnpred2, calc_rmse, actual = trn$price)
+tstrmse2 = sapply(tstpred2, calc_rmse, actual = tst$price)
+
+```
+
+#### Zipcode Refactoring
+
+```{r, echo=FALSE}
+e1_results = data.frame(
+  mod = c("Full Model", "factor Zipcode", 
+          "Without Zipcode"),
+  trn_rmse = trnrmse1,
+  tst_rmse = tstrmse1
+)
+
+colnames(e1_results) = c("Model", "Train RMSE", "Test RMSE")
+
+kable_styling(kable(e1_results, format = "html", digits = 0), full_width = FALSE)
+```
+
+We see that factoring zipcode is very useful in lowering RMSE.
+
+#### Lat and Long are Significant
+
+```{r}
+summary(lmod1)
+```
+
+We see that latitude and longitude are significant variables.
+
+
